@@ -8,12 +8,15 @@ use etcetera::AppStrategy;
 use etcetera::AppStrategyArgs;
 use itertools::izip;
 use itertools::Itertools;
+use std::clone::Clone;
 use std::fs::create_dir_all;
 use std::path::PathBuf;
 use tantivy::schema::Schema;
 use tantivy::{DocAddress, Document, Index, Score, Searcher};
 use yansi::{Color, Paint, Style};
 
+#[cfg(feature = "config")]
+mod config;
 mod indexer;
 
 #[derive(clap::ValueEnum, Clone)]
@@ -34,6 +37,9 @@ enum ColorArg {
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Args {
+    #[cfg(feature = "config")]
+    #[clap(short, long, global = true)]
+    config: Option<PathBuf>,
     #[clap(short, long, global = true, env = "AKASABI_INDEX")]
     index: Option<PathBuf>,
     #[clap(long, global = true, default_value = "auto")]
@@ -68,31 +74,51 @@ enum Command {
         jmdict_url: Option<String>,
     },
     Info,
+    // Primarily for debugging
+    #[cfg(feature = "config")]
+    PrintConfig {
+        // index is already a global option
+        #[clap(long)]
+        jmdict_url: Option<String>,
+        #[clap(long)]
+        jmdict_path: Option<PathBuf>,
+    },
 }
 
+// TODO: Refactor this into multiple functions
+#[allow(clippy::too_many_lines)]
 fn main() -> Result<()> {
     env_logger::init();
 
     let args = Args::parse();
+    let strategy = choose_app_strategy(AppStrategyArgs {
+        app_name: "akasabi".to_string(),
+        top_level_domain: "com".to_string(),
+        author: "itsbth".to_string(),
+    })?;
+
+    #[cfg(feature = "config")]
+    let config = {
+        let config_path = args
+            .config
+            .clone()
+            .unwrap_or_else(|| strategy.in_config_dir("config.toml"));
+
+        if config_path.exists() {
+            config::Config::from_file(&config_path)?
+        } else {
+            config::Config::default()
+        }
+    };
 
     {
-        fn detect_color() -> bool {
-            // not tty -> false
-            // NO_COLOR -> false
-            // else -> true
-            #[cfg(unix)]
-            {
-                if !nix::unistd::isatty(nix::libc::STDOUT_FILENO).unwrap_or(false) {
-                    return false;
-                }
-            }
-            if let Ok(no_color) = std::env::var("NO_COLOR") {
-                return no_color.is_empty();
-            }
-            true
-        }
         let color = match args.color {
-            ColorArg::Auto => detect_color(),
+            ColorArg::Auto => {
+                nix::unistd::isatty(nix::libc::STDOUT_FILENO).unwrap_or(false)
+                    && !std::env::var("NO_COLOR")
+                        .map(|s| s.is_empty())
+                        .unwrap_or(true)
+            }
             ColorArg::Always => true,
             ColorArg::Never => false,
         };
@@ -105,16 +131,17 @@ fn main() -> Result<()> {
         }
     }
 
-    let index_path = if let Some(path) = args.index {
-        path
-    } else {
-        let strategy = choose_app_strategy(AppStrategyArgs {
-            app_name: "akasabi".to_string(),
-            top_level_domain: "com".to_string(),
-            author: "itsbth".to_string(),
-        })?;
-        strategy.in_data_dir("index")
-    };
+    #[cfg(feature = "config")]
+    let config_index_path = config.index.path.as_ref();
+    #[cfg(not(feature = "config"))]
+    let config_index_path = None;
+
+    // Try --index, config file, then default
+    let index_path = args
+        .index
+        .as_ref()
+        .or(config_index_path)
+        .map_or_else(|| strategy.in_data_dir("index"), Clone::clone);
 
     let schema = indexer::create_schema();
 
@@ -149,6 +176,35 @@ fn main() -> Result<()> {
                 Paint::green(env!("CARGO_PKG_VERSION"))
             );
             println!("Index path: {}", Paint::blue(index_path.to_str().unwrap()));
+            #[cfg(feature = "config")]
+            {
+                // FIXME: This is duplicated from above
+                let config_path = args
+                    .config
+                    .unwrap_or_else(|| strategy.in_config_dir("config.toml"));
+                println!(
+                    "Config path: {}",
+                    Paint::blue(config_path.to_str().unwrap())
+                );
+                println!("Config: {config:#?}");
+            }
+        }
+        #[cfg(feature = "config")]
+        Command::PrintConfig {
+            jmdict_url,
+            jmdict_path,
+        } => {
+            let string = config::Config {
+                index: config::Index {
+                    path: Some(index_path),
+                },
+                jmdict: config::Jmdict {
+                    path: jmdict_path.or(config.jmdict.path),
+                    url: jmdict_url.or(config.jmdict.url),
+                },
+            }
+            .to_str()?;
+            print!("{string}");
         }
     }
 

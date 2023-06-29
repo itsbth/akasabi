@@ -1,0 +1,5 @@
+[index]
+path = "/Users/itsbth/.local/share/akasabi/index"
+
+[jmdict]
+url = "ftp://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz"
