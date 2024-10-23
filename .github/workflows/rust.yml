@@ -22,7 +22,7 @@ jobs:
         rust: ["stable"]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: rustup override set "${{ matrix.rust }}"
       - run: rustup component add clippy
       - uses: Swatinem/rust-cache@v2
@@ -35,5 +35,5 @@ jobs:
   deny:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v1
