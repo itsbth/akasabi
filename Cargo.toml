@@ -15,7 +15,7 @@ itertools = "0.10.5"
 lindera-core = "0.25.0"
 lindera-dictionary = "0.25.0"
 lindera-tantivy = { version = "0.25.0", features = ["ipadic"] }
-reqwest = { version = "0.11.18", features = ["blocking"] }
+reqwest = { version = "0.12.0", features = ["blocking"] }
 serde = { version = "1.0.164" }
 tantivy = "0.20.2"
 toml = { version = "0.7.5" }
