@@ -150,7 +150,7 @@ fn main() -> Result<()> {
             field,
             create_if_missing: _,
         } => {
-            let (searcher, top_docs) = search(&index, &schema, &term, &field)?;
+            let (searcher, top_docs) = search(&index, &schema, &term, field.as_ref())?;
 
             for (_score, doc_address) in top_docs {
                 let retrieved_doc = searcher.doc(doc_address)?;
@@ -210,7 +210,7 @@ fn search(
     index: &Index,
     schema: &Schema,
     term: &str,
-    field: &Option<Field>,
+    field: Option<&Field>,
 ) -> Result<(Searcher, Vec<(Score, DocAddress)>)> {
     let (word, reading, reading_romaji, meaning) = (
         schema.get_field("word").unwrap(),
@@ -226,10 +226,10 @@ fn search(
     let searcher = reader.searcher();
 
     let fields = match field {
-        Some(Field::Word) => vec![word],
-        Some(Field::Reading) => vec![reading],
-        Some(Field::ReadingRomaji) => vec![reading_romaji],
-        Some(Field::Meaning) => vec![meaning],
+        Some(&Field::Word) => vec![word],
+        Some(&Field::Reading) => vec![reading],
+        Some(&Field::ReadingRomaji) => vec![reading_romaji],
+        Some(&Field::Meaning) => vec![meaning],
         None => vec![word, reading, reading_romaji, meaning],
     };
 
