@@ -197,7 +197,7 @@ mod test {
     #[test]
     fn test_extract_next_string() {
         let mut parser = EventReader::from_str(
-            r#"
+            r"
             <entry>
                 <ent_seq>1</ent_seq>
                 <k_ele>
@@ -215,7 +215,7 @@ mod test {
                     <field>country</field>
                 </sense>
             </entry>
-        "#,
+        ",
         );
 
         assert_eq!(extract_next_string(&mut parser), "1");
