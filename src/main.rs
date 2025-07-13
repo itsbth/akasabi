@@ -168,8 +168,15 @@ fn main() -> Result<()> {
                 print_result(&schema, &retrieved_doc, &term);
             }
         }
-        Command::Index { path, .. } => {
-            index_(&index, &schema, &path)?;
+        Command::Index { path, jmdict_url } => {
+            let config_for_indexing = config::Config {
+                index: config.index.clone(),
+                jmdict: config::Jmdict {
+                    path: config.jmdict.path.clone(),
+                    url: jmdict_url.or(config.jmdict.url),
+                },
+            };
+            index_(&index, &schema, &path, &config_for_indexing)?;
         }
         Command::Info => {
             // Print program info; ie version and configuration (currently only resolved index path)
@@ -212,8 +219,22 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn index_(index: &Index, schema: &Schema, path: &str) -> Result<()> {
-    create_index(schema, path, index)?;
+fn index_(index: &Index, schema: &Schema, path: &str, config: &config::Config) -> Result<()> {
+    let jmdict_path = if std::path::Path::new(path).exists() {
+        path.to_string()
+    } else if let Some(url) = &config.jmdict.url {
+        println!("JMdict file not found at {path}, attempting to download from URL...");
+        indexer::fetch_jmdict(url, path)?;
+        path.to_string()
+    } else {
+        return Err(anyhow::anyhow!(
+            "JMdict file not found at '{}' and no URL configured. \
+             Use --jmdict-url to specify a download URL or place the file at the specified path.",
+            path
+        ));
+    };
+    
+    create_index(schema, &jmdict_path, index)?;
     Ok(())
 }
 

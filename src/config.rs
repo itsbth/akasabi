@@ -3,7 +3,7 @@ use std::{io::Read, path::PathBuf};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize, Default, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Default, PartialEq, Eq, Clone)]
 pub(crate) struct Config {
     #[serde(skip_serializing_if = "Index::is_default")]
     pub(crate) index: Index,
@@ -11,12 +11,12 @@ pub(crate) struct Config {
     pub(crate) jmdict: Jmdict,
 }
 
-#[derive(Debug, Deserialize, Serialize, Default, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Default, PartialEq, Eq, Clone)]
 pub(crate) struct Index {
     pub(crate) path: Option<PathBuf>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Default, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Default, PartialEq, Eq, Clone)]
 pub(crate) struct Jmdict {
     pub(crate) path: Option<PathBuf>,
     pub(crate) url: Option<String>,

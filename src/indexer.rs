@@ -12,7 +12,7 @@ use std::io;
 use std::io::{BufReader, Read, Write};
 use std::path::Path;
 use tantivy::schema::{Schema, TextFieldIndexing, TextOptions, INDEXED, STORED, TEXT};
-use tantivy::Index;
+use tantivy::{Index, TantivyDocument};
 use wana_kana::ConvertJapanese;
 use xml::reader::XmlEvent;
 use xml::EventReader;
@@ -44,7 +44,19 @@ pub fn create_schema() -> Schema {
 }
 
 pub fn create_index(schema: &Schema, path: &str, index: &Index) -> Result<()> {
-    // Register the Japanese tokenizer with IPADIC dictionary
+    setup_tokenizer(index)?;
+    let mut index_writer = index.writer(50_000_000)?;
+    index_writer.delete_all_documents()?;
+
+    let mut parser = create_parser(path)?;
+    let schema_fields = extract_schema_fields(schema);
+    
+    let count = parse_xml_and_index(&mut parser, &mut index_writer, &schema_fields)?;
+    
+    commit_index(index_writer, count)
+}
+
+fn setup_tokenizer(index: &Index) -> Result<()> {
     let dictionary = load_dictionary_from_kind(DictionaryKind::IPADIC)?;
     let segmenter = Segmenter::new(
         Mode::Normal,
@@ -53,122 +65,180 @@ pub fn create_index(schema: &Schema, path: &str, index: &Index) -> Result<()> {
     );
     let lindera_tokenizer = LinderaTokenizer::from_segmenter(segmenter);
     index.tokenizers().register("ja_JP", lindera_tokenizer);
-    
-    let mut index_writer = index.writer(50_000_000)?;
+    Ok(())
+}
 
-    // Start with a clean slate
-    index_writer.delete_all_documents()?;
-
+fn create_parser(path: &str) -> Result<EventReader<GzDecoder<BufReader<File>>>> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-    let mut gz = GzDecoder::new(reader);
-    let mut parser = EventReader::new(&mut gz);
+    let gz = GzDecoder::new(reader);
+    Ok(EventReader::new(gz))
+}
 
-    // common fields
-    let id = schema.get_field("id").unwrap();
+struct SchemaFields {
+    id: tantivy::schema::Field,
+    word: tantivy::schema::Field,
+    reading: tantivy::schema::Field,
+    reading_romaji: tantivy::schema::Field,
+    meaning: tantivy::schema::Field,
+    pos: tantivy::schema::Field,
+    field: tantivy::schema::Field,
+}
 
-    // entry fields
-    let word = schema.get_field("word").unwrap();
-    let reading = schema.get_field("reading").unwrap();
-    let reading_romaji = schema.get_field("reading_romaji").unwrap();
+struct ParseContext {
+    glosses: Vec<String>,
+    poses: Vec<String>,
+    fields: Vec<String>,
+    current_entry: Option<TantivyDocument>,
+    count: i32,
+}
 
-    // sense fields
-    let meaning = schema.get_field("meaning").unwrap();
-    let pos = schema.get_field("pos").unwrap();
-    let field = schema.get_field("field").unwrap();
+fn extract_schema_fields(schema: &Schema) -> SchemaFields {
+    SchemaFields {
+        id: schema.get_field("id").unwrap(),
+        word: schema.get_field("word").unwrap(),
+        reading: schema.get_field("reading").unwrap(),
+        reading_romaji: schema.get_field("reading_romaji").unwrap(),
+        meaning: schema.get_field("meaning").unwrap(),
+        pos: schema.get_field("pos").unwrap(),
+        field: schema.get_field("field").unwrap(),
+    }
+}
 
-    let mut glosses = Vec::new();
-    // poss?
-    let mut poses = Vec::new();
-    // Can this have >1 value?
-    let mut fields = Vec::new();
-
-    let mut current_entry = Some(tantivy::doc!());
-
-    let mut count = 0;
+fn parse_xml_and_index(
+    parser: &mut EventReader<GzDecoder<BufReader<File>>>,
+    index_writer: &mut tantivy::IndexWriter,
+    schema_fields: &SchemaFields,
+) -> Result<i32> {
+    let mut context = ParseContext {
+        glosses: Vec::new(),
+        poses: Vec::new(),
+        fields: Vec::new(),
+        current_entry: Some(tantivy::doc!()),
+        count: 0,
+    };
 
     while let Ok(e) = parser.next() {
         match e {
-            XmlEvent::StartElement { name, .. } => match name.local_name.as_str() {
-                "entry" => {
-                    current_entry = Some(tantivy::doc!());
-                }
-                "sense" => {
-                    glosses.clear();
-                    poses.clear();
-                    fields.clear();
-                }
-                "ent_seq" => {
-                    let entry_id = extract_next_string(&mut parser);
-                    current_entry
-                        .as_mut()
-                        .unwrap()
-                        .add_i64(id, entry_id.parse::<i64>().unwrap());
-                }
-                "keb" => {
-                    let keb = extract_next_string(&mut parser);
-                    current_entry.as_mut().unwrap().add_text(word, keb);
-                }
-                "reb" => {
-                    let reb = extract_next_string(&mut parser);
-                    current_entry
-                        .as_mut()
-                        .unwrap()
-                        .add_text(reading, reb.clone());
-                    current_entry
-                        .as_mut()
-                        .unwrap()
-                        .add_text(reading_romaji, reb.to_romaji());
-                }
-                "gloss" => {
-                    let gloss = extract_next_string(&mut parser);
-                    glosses.push(gloss);
-                }
-                "pos" => {
-                    let pos_value = extract_next_string(&mut parser);
-                    poses.push(pos_value);
-                }
-                "field" => {
-                    let field_value = extract_next_string(&mut parser);
-                    fields.push(field_value);
-                }
-                _ => {}
-            },
+            XmlEvent::StartElement { name, .. } => {
+                handle_start_element(
+                    &name.local_name,
+                    parser,
+                    &mut context,
+                    schema_fields,
+                );
+            }
             XmlEvent::EndElement { name } => {
-                if name.local_name == "entry" {
-                    let current_doc = current_entry.take().unwrap();
-                    index_writer.add_document(current_doc)?;
-
-                    count += 1;
-
-                    if count % 1000 == 0 {
-                        println!("{} entries read...", Paint::default(count).bold());
-                    }
-                } else if name.local_name == "sense" {
-                    if let Some(entry) = current_entry.as_mut() {
-                        entry.add_text(meaning, glosses.join("; "));
-                        entry.add_text(pos, poses.join("; "));
-                        entry.add_text(field, fields.join("; "));
-                    }
+                if handle_end_element(
+                    &name.local_name,
+                    &mut context,
+                    index_writer,
+                    schema_fields,
+                )? {
+                    // Clear collections for next sense
+                    context.glosses.clear();
+                    context.poses.clear();
+                    context.fields.clear();
                 }
             }
-            XmlEvent::EndDocument => {
-                // NB: Parser will repeatedly return EndDocument, so we need to break out of the loop
-                break;
-            }
+            XmlEvent::EndDocument => break,
             _ => {}
         }
     }
 
+    Ok(context.count)
+}
+
+fn handle_start_element(
+    element_name: &str,
+    parser: &mut EventReader<GzDecoder<BufReader<File>>>,
+    context: &mut ParseContext,
+    schema_fields: &SchemaFields,
+) {
+    match element_name {
+        "entry" => {
+            context.current_entry = Some(tantivy::doc!());
+        }
+        "sense" => {
+            context.glosses.clear();
+            context.poses.clear();
+            context.fields.clear();
+        }
+        "ent_seq" => {
+            let entry_id = extract_next_string(parser);
+            context.current_entry
+                .as_mut()
+                .unwrap()
+                .add_i64(schema_fields.id, entry_id.parse::<i64>().unwrap());
+        }
+        "keb" => {
+            let keb = extract_next_string(parser);
+            context.current_entry.as_mut().unwrap().add_text(schema_fields.word, keb);
+        }
+        "reb" => {
+            let reb = extract_next_string(parser);
+            context.current_entry
+                .as_mut()
+                .unwrap()
+                .add_text(schema_fields.reading, reb.clone());
+            context.current_entry
+                .as_mut()
+                .unwrap()
+                .add_text(schema_fields.reading_romaji, reb.to_romaji());
+        }
+        "gloss" => {
+            let gloss = extract_next_string(parser);
+            context.glosses.push(gloss);
+        }
+        "pos" => {
+            let pos_value = extract_next_string(parser);
+            context.poses.push(pos_value);
+        }
+        "field" => {
+            let field_value = extract_next_string(parser);
+            context.fields.push(field_value);
+        }
+        _ => {}
+    }
+}
+
+fn handle_end_element(
+    element_name: &str,
+    context: &mut ParseContext,
+    index_writer: &mut tantivy::IndexWriter,
+    schema_fields: &SchemaFields,
+) -> Result<bool> {
+    match element_name {
+        "entry" => {
+            let current_doc = context.current_entry.take().unwrap();
+            index_writer.add_document(current_doc)?;
+            context.count += 1;
+
+            if context.count % 1000 == 0 {
+                println!("{} entries read...", Paint::default(context.count).bold());
+            }
+            Ok(false)
+        }
+        "sense" => {
+            if let Some(entry) = context.current_entry.as_mut() {
+                entry.add_text(schema_fields.meaning, context.glosses.join("; "));
+                entry.add_text(schema_fields.pos, context.poses.join("; "));
+                entry.add_text(schema_fields.field, context.fields.join("; "));
+            }
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+fn commit_index(mut index_writer: tantivy::IndexWriter, count: i32) -> Result<()> {
     print!(
         "{} entries read... ",
         Paint::default(count.to_string()).bold()
     );
-    // Flush stdout so that the progress indicator is displayed
     io::stdout().flush().unwrap();
     index_writer.commit()?;
     println!("and committed.");
-
     Ok(())
 }
 
@@ -196,11 +266,12 @@ fn extract_next_string<R: Read>(parser: &mut EventReader<R>) -> String {
     buf
 }
 
-fn fetch_jmdict<P: AsRef<Path>>(out_file: P) -> Result<()> {
-    let url = "https://ftp.monash.edu/pub/nihongo/JMdict_e.gz";
+pub fn fetch_jmdict<P: AsRef<Path>>(url: &str, out_file: P) -> Result<()> {
+    println!("Downloading JMdict from {url}...");
     let mut resp = reqwest::blocking::get(url)?;
     let mut out = File::create(out_file)?;
     io::copy(&mut resp, &mut out)?;
+    println!("Download complete.");
     Ok(())
 }
 
