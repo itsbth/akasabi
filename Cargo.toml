@@ -21,7 +21,7 @@ tantivy = "0.24.1"
 toml = { version = "0.7.5" }
 wana_kana = "3.0.0"
 xml = "0.8.10"
-yansi = "0.5.1"
+yansi = "1.0.0"
 time = "0.3.35"
 
 [target.'cfg(unix)'.dependencies]
