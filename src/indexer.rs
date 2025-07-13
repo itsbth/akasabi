@@ -3,6 +3,10 @@
 
 use anyhow::Result;
 use flate2::read::GzDecoder;
+use lindera::dictionary::{load_dictionary_from_kind, DictionaryKind};
+use lindera::mode::Mode;
+use lindera::segmenter::Segmenter;
+use lindera_tantivy::tokenizer::LinderaTokenizer;
 use std::fs::File;
 use std::io;
 use std::io::{BufReader, Read, Write};
@@ -40,6 +44,16 @@ pub fn create_schema() -> Schema {
 }
 
 pub fn create_index(schema: &Schema, path: &str, index: &Index) -> Result<()> {
+    // Register the Japanese tokenizer with IPADIC dictionary
+    let dictionary = load_dictionary_from_kind(DictionaryKind::IPADIC)?;
+    let segmenter = Segmenter::new(
+        Mode::Normal,
+        dictionary,
+        None, // No user dictionary
+    );
+    let lindera_tokenizer = LinderaTokenizer::from_segmenter(segmenter);
+    index.tokenizers().register("ja_JP", lindera_tokenizer);
+    
     let mut index_writer = index.writer(50_000_000)?;
 
     // Start with a clean slate
@@ -69,7 +83,7 @@ pub fn create_index(schema: &Schema, path: &str, index: &Index) -> Result<()> {
     // Can this have >1 value?
     let mut fields = Vec::new();
 
-    let mut current_entry = Some(tantivy::Document::default());
+    let mut current_entry = Some(tantivy::doc!());
 
     let mut count = 0;
 
@@ -77,7 +91,7 @@ pub fn create_index(schema: &Schema, path: &str, index: &Index) -> Result<()> {
         match e {
             XmlEvent::StartElement { name, .. } => match name.local_name.as_str() {
                 "entry" => {
-                    current_entry = Some(tantivy::Document::default());
+                    current_entry = Some(tantivy::doc!());
                 }
                 "sense" => {
                     glosses.clear();

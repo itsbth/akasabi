@@ -11,8 +11,8 @@ use itertools::Itertools;
 use std::clone::Clone;
 use std::fs::create_dir_all;
 use std::path::PathBuf;
-use tantivy::schema::Schema;
-use tantivy::{DocAddress, Document, Index, Score, Searcher};
+use tantivy::schema::{Schema, Value};
+use tantivy::{DocAddress, Index, Score, Searcher, TantivyDocument};
 use yansi::{Color, Paint, Style};
 
 mod config;
@@ -138,7 +138,18 @@ fn main() -> Result<()> {
     let schema = indexer::create_schema();
 
     let index = if index_path.join("meta.json").exists() {
-        Index::open_in_dir(&index_path).context("Failed to open index")?
+        let index = Index::open_in_dir(&index_path).context("Failed to open index")?;
+        // Register the Japanese tokenizer with IPADIC dictionary
+        let dictionary = lindera::dictionary::load_dictionary_from_kind(lindera::dictionary::DictionaryKind::IPADIC)
+            .context("Failed to load IPADIC dictionary")?;
+        let segmenter = lindera::segmenter::Segmenter::new(
+            lindera::mode::Mode::Normal,
+            dictionary,
+            None, // No user dictionary
+        );
+        let lindera_tokenizer = lindera_tantivy::tokenizer::LinderaTokenizer::from_segmenter(segmenter);
+        index.tokenizers().register("ja_JP", lindera_tokenizer);
+        index
     } else {
         create_dir_all(index_path.clone()).context("Failed to create index directory")?;
         Index::create_in_dir(&index_path, schema.clone()).context("Failed to create index")?
@@ -244,7 +255,7 @@ fn search(
 }
 
 // TODO: Also take query so we can highlight it
-fn print_result(schema: &Schema, document: &Document, _term: &str) {
+fn print_result(schema: &Schema, document: &TantivyDocument, _term: &str) {
     // entry fields
     let word = schema.get_field("word").unwrap();
     let reading = schema.get_field("reading").unwrap();
@@ -262,25 +273,25 @@ fn print_result(schema: &Schema, document: &Document, _term: &str) {
 
     let kanji = document
         .get_all(word)
-        .map(|f| f.as_text().unwrap())
+        .map(|f| f.as_str().unwrap())
         .collect_vec();
     let readings = document
         .get_all(reading)
-        .map(|f| f.as_text().unwrap())
+        .map(|f| f.as_str().unwrap())
         .collect_vec();
 
     // meanings, pos, and fields should be "aligned" (ie. same length, n-th element of each)
     let meanings = document
         .get_all(meaning)
-        .map(|f| f.as_text().unwrap())
+        .map(|f| f.as_str().unwrap())
         .collect_vec();
     let pos = document
         .get_all(pos)
-        .map(|f| f.as_text().unwrap())
+        .map(|f| f.as_str().unwrap())
         .collect_vec();
     let fields = document
         .get_all(field)
-        .map(|f| f.as_text().unwrap())
+        .map(|f| f.as_str().unwrap())
         .collect_vec();
 
     let c_kanji = Style::new(Color::Blue).bold();
