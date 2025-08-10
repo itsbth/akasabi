@@ -25,7 +25,7 @@ yansi = "0.5.1"
 time = "0.3.35"
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.26.2"
+nix = "0.30.0"
 
 [dev-dependencies]
 tempfile = "3.6.0"
