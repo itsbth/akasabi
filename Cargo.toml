@@ -6,12 +6,12 @@ description = "A tool for searching Japanese text"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-anyhow = "1.0.71"
-clap = { version = "4.3.4", features = ["derive", "env"] }
-env_logger = "0.10.0"
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive", "env"] }
+env_logger = "0.11"
 etcetera = "0.8.0"
-flate2 = "1.0.26"
-itertools = "0.10.5"
+flate2 = "1.0"
+itertools = "0.14"
 # Lindera 1.4.1 with embedded IPADIC dictionary
 # Note: The embedded-ipadic feature requires network access during build to download
 # the IPADIC dictionary files. If build fails with dictionary download errors,
@@ -19,17 +19,17 @@ itertools = "0.10.5"
 lindera = { version = "1.4.1", features = ["embedded-ipadic"] }
 lindera-ipadic = { version = "1.4.1", features = ["embedded-ipadic"] }
 lindera-tantivy = "1.1.1"
-reqwest = { version = "0.12.0", features = ["blocking"] }
-serde = { version = "1.0.164" }
-tantivy = "0.25.0"
-toml = { version = "0.7.5" }
-wana_kana = "3.0.0"
-xml = "0.8.10"
-yansi = "0.5.1"
-time = "0.3.35"
+reqwest = { version = "0.12", features = ["blocking"] }
+serde = { version = "1.0", features = ["derive"] }
+tantivy = "0.25"
+toml = { version = "0.8" }
+wana_kana = "4.0"
+xml = "0.8"
+yansi = "1.0"
+time = "0.3"
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.26.2"
+nix = { version = "0.29", features = ["process"] }
 
 [dev-dependencies]
-tempfile = "3.6.0"
+tempfile = "3.13"
