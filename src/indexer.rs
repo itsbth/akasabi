@@ -3,7 +3,6 @@
 
 use anyhow::Result;
 use flate2::read::GzDecoder;
-use lindera::dictionary::{load_dictionary_from_kind, DictionaryKind};
 use lindera::mode::Mode;
 use lindera::segmenter::Segmenter;
 use lindera_tantivy::tokenizer::LinderaTokenizer;
@@ -57,7 +56,9 @@ pub fn create_index(schema: &Schema, path: &str, index: &Index) -> Result<()> {
 }
 
 fn setup_tokenizer(index: &Index) -> Result<()> {
-    let dictionary = load_dictionary_from_kind(DictionaryKind::IPADIC)?;
+    // Load embedded IPADIC dictionary
+    // This uses the embedded dictionary bundled with lindera-ipadic
+    let dictionary = lindera_ipadic::embedded::load()?;
     let segmenter = Segmenter::new(
         Mode::Normal,
         dictionary,
