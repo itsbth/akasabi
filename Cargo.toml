@@ -12,12 +12,16 @@ env_logger = "0.10.0"
 etcetera = "0.8.0"
 flate2 = "1.0.26"
 itertools = "0.10.5"
-lindera = { version = "0.44.1", features = ["ipadic"] }
-lindera-ipadic = "0.44.1"
-lindera-tantivy = { version = "0.44.1", features = ["ipadic"] }
+# Lindera 1.4.1 with embedded IPADIC dictionary
+# Note: The embedded-ipadic feature requires network access during build to download
+# the IPADIC dictionary files. If build fails with dictionary download errors,
+# ensure network access is available or use an alternative dictionary loading method.
+lindera = { version = "1.4.1", features = ["embedded-ipadic"] }
+lindera-ipadic = { version = "1.4.1", features = ["embedded-ipadic"] }
+lindera-tantivy = "1.1.1"
 reqwest = { version = "0.12.0", features = ["blocking"] }
 serde = { version = "1.0.164" }
-tantivy = "0.24.1"
+tantivy = "0.25.0"
 toml = { version = "0.7.5" }
 wana_kana = "3.0.0"
 xml = "0.8.10"

@@ -139,8 +139,8 @@ fn main() -> Result<()> {
 
     let index = if index_path.join("meta.json").exists() {
         let index = Index::open_in_dir(&index_path).context("Failed to open index")?;
-        // Register the Japanese tokenizer with IPADIC dictionary
-        let dictionary = lindera::dictionary::load_dictionary_from_kind(lindera::dictionary::DictionaryKind::IPADIC)
+        // Register the Japanese tokenizer with embedded IPADIC dictionary
+        let dictionary = lindera_ipadic::embedded::load()
             .context("Failed to load IPADIC dictionary")?;
         let segmenter = lindera::segmenter::Segmenter::new(
             lindera::mode::Mode::Normal,
