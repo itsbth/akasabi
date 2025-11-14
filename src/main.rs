@@ -228,9 +228,8 @@ fn index_(index: &Index, schema: &Schema, path: &str, config: &config::Config) -
         path.to_string()
     } else {
         return Err(anyhow::anyhow!(
-            "JMdict file not found at '{}' and no URL configured. \
-             Use --jmdict-url to specify a download URL or place the file at the specified path.",
-            path
+            "JMdict file not found at '{path}' and no URL configured. \
+             Use --jmdict-url to specify a download URL or place the file at the specified path."
         ));
     };
     
