@@ -10,6 +10,7 @@ use itertools::izip;
 use itertools::Itertools;
 use std::clone::Clone;
 use std::fs::create_dir_all;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use tantivy::schema::{Schema, Value};
 use tantivy::{DocAddress, Index, Score, Searcher, TantivyDocument};
@@ -109,7 +110,7 @@ fn main() -> Result<()> {
     {
         let color = match args.color {
             ColorArg::Auto => {
-                nix::unistd::isatty(nix::libc::STDOUT_FILENO).unwrap_or(false)
+                std::io::stdout().is_terminal()
                     && !std::env::var("NO_COLOR")
                         .map(|s| s.is_empty())
                         .unwrap_or(true)
