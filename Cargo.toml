@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 anyhow = "1.0.71"
 clap = { version = "4.3.4", features = ["derive", "env"] }
-env_logger = "0.10.0"
+env_logger = "0.11.0"
 etcetera = "0.8.0"
 flate2 = "1.0.26"
 itertools = "0.10.5"
